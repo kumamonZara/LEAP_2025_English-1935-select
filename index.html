@@ -1,10 +1,9 @@
-
 <!DOCTYPE html>
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LEAP 英単語</title>
+    <title>英単語</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
@@ -34,16 +33,23 @@
     <!-- ヘッダー -->
     <header class="fixed top-0 w-full bg-white/90 backdrop-blur-md border-b border-slate-200 z-50 h-16">
         <div class="max-w-3xl mx-auto px-4 h-full flex items-center justify-between">
-            <button id="header-back-btn" class="text-slate-400 hover:text-indigo-600 transition hidden p-2">
+            <button id="header-back-btn" class="text-slate-400 hover:text-indigo-600 transition hidden p-2 active:scale-90 active:text-indigo-700">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
             </button>
             <div class="font-black text-xl tracking-tighter text-indigo-600 italic select-none cursor-pointer whitespace-nowrap flex-shrink-0" onclick="App.mode='START';render()">LEAP <span class="text-slate-500 font-bold ml-1 text-sm not-italic tracking-normal">英単語</span></div>
             
-            <!-- 進捗バー（クイズ中のみ表示） -->
-            <div id="progress-container" class="hidden flex flex-col items-end w-32 flex-shrink-0">
-                <div class="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider"><span id="progress-text">0 / 0</span></div>
-                <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-                    <div id="progress-bar" class="h-full bg-indigo-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+            <div class="flex items-center gap-2">
+                 <!-- 統計ボタン -->
+                <button id="stats-btn" onclick="startStats()" class="p-2 text-slate-400 hover:text-indigo-600 transition" title="学習統計">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/></svg>
+                </button>
+
+                <!-- 進捗バー（クイズ中のみ表示） -->
+                <div id="progress-container" class="hidden flex flex-col items-end w-24 sm:w-32 flex-shrink-0">
+                    <div class="text-[10px] font-bold text-slate-400 mb-1 uppercase tracking-wider"><span id="progress-text">0 / 0</span></div>
+                    <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                        <div id="progress-bar" class="h-full bg-indigo-500 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -70,11 +76,41 @@
 <script>
 /**
  * ==========================================
- * データセクション
+ * データセクション (window.WORD_LIST は外部ファイルから読み込まれる想定)
  * ==========================================
  */
-window.WORD_LIST=[
-{id:1,en:"agree",ja:"賛成する，意見が一致する，（with~）合う"},{id:2,en:"oppose",ja:"に反対する"},{id:3,en:"advise",ja:"忠告する"},{id:4,en:"tip",ja:"助言，ヒント，チップ，（足や山などの）先，先端"},
+
+// main.js
+
+// グローバル状態管理
+const App = {
+    mode: 'START',
+    ranges: [{ start: 1, end: 1935 }], // 複数範囲に対応
+    queue: [],
+    currentIndex: 0,
+    score: 0,
+    mistakes: [],
+    
+    // 履歴・統計管理
+    savedMistakes: new Set(), // 苦手単語ID
+    history: [], // 学習履歴配列
+    wordStats: {}, // 単語ごとの正答率 { [id]: { choice: {correct, total}, typing: {correct, total} } }
+    currentSessionLogs: [], // 現在のクイズセッションのログ
+    selectedSessionId: null, // 詳細表示するセッションID
+    
+    isMistakeListOpen: false, 
+    searchTerm: '',
+    isWaiting: false,
+    wordList: [],
+    quizType: 'RANDOM',
+    timerId: null, // タイマー管理用
+    wasInterrupted: false, // 中断フラグ
+    sortType: 'ID' // リストのソート順
+};
+
+// 予備データ
+const EMERGENCY_DATA = [
+    {id:1,en:"agree",ja:"賛成する，意見が一致する，（with~）合う"},{id:2,en:"oppose",ja:"に反対する"},{id:3,en:"advise",ja:"忠告する"},{id:4,en:"tip",ja:"助言，ヒント，チップ，（足や山などの）先，先端"},
 {id:5,en:"discuss",ja:"について話し合う，議論する，話題に出す"},{id:6,en:"blame",ja:"〜に責任があるとする"},{id:7,en:"argue",ja:"(that S V)〜と主張する，（with~）言い争う"},
 {id:8,en:"claim",ja:"(that S V)〜と主張する，〜を要求する，〜を主張する，主張，要求"},{id:9,en:"complain",ja:"文句を言う，苦情を言う，（of~）訴える"},{id:10,en:"offer",ja:"〜を申し出る，申し出，値引き"},
 {id:11,en:"suggest",ja:"〜を示唆する，〜を提案する"},{id:12,en:"recommend",ja:"〜を推薦する，勧める"},{id:13,en:"grateful",ja:"感謝している"},
@@ -721,29 +757,6 @@ window.WORD_LIST=[
 {id:1934,en:"namely",ja:"すなわち"},{id:1935,en:"whereas",ja:"〜だが一方"}
 ];
 
-// main.js
-
-// グローバル状態管理
-const App = {
-    mode: 'START',
-    ranges: [{ start: 1, end: 100 }], // 複数範囲に対応
-    queue: [],
-    currentIndex: 0,
-    score: 0,
-    mistakes: [],
-    savedMistakes: new Set(), // 苦手単語IDの保存用セット
-    isMistakeListOpen: false, // 苦手リスト表示状態
-    searchTerm: '',
-    isWaiting: false,
-    wordList: [],
-    quizType: 'RANDOM'
-};
-
-// 予備データ
-const EMERGENCY_DATA = [
-    {id:1,en:"agree",ja:"賛成する"},{id:2,en:"oppose",ja:"反対する"},{id:3,en:"advise",ja:"忠告する"},{id:4,en:"tip",ja:"助言"}
-];
-
 // --- 初期化処理 ---
 window.initApp = function() {
     try {
@@ -756,8 +769,8 @@ window.initApp = function() {
         // 初期範囲の終了値を調整
         App.ranges[0].end = Math.min(100, App.wordList.length);
         
-        // 苦手単語リストの読み込み
-        loadSavedMistakes();
+        // データの読み込み
+        loadData();
 
         render();
         
@@ -770,23 +783,48 @@ window.initApp = function() {
     }
 };
 
-// --- 苦手リスト管理 ---
-function loadSavedMistakes() {
+// --- データ永続化 ---
+function loadData() {
     try {
-        const data = localStorage.getItem('leap_mistakes_v1');
-        if (data) {
-            App.savedMistakes = new Set(JSON.parse(data));
-        }
+        const mistakes = localStorage.getItem('leap_mistakes_v1');
+        if (mistakes) App.savedMistakes = new Set(JSON.parse(mistakes));
+
+        const history = localStorage.getItem('leap_history_v1');
+        if (history) App.history = JSON.parse(history);
+
+        const stats = localStorage.getItem('leap_word_stats_v1');
+        if (stats) App.wordStats = JSON.parse(stats);
+
     } catch (e) {
         console.error("Storage load error:", e);
     }
 }
 
-function saveMistakesToStorage() {
+function saveData() {
     try {
         localStorage.setItem('leap_mistakes_v1', JSON.stringify([...App.savedMistakes]));
+        localStorage.setItem('leap_history_v1', JSON.stringify(App.history));
+        localStorage.setItem('leap_word_stats_v1', JSON.stringify(App.wordStats));
     } catch (e) {
         console.error("Storage save error:", e);
+    }
+}
+
+// 統計データの更新
+function updateWordStats(wordId, isCorrect, type) {
+    if (!App.wordStats[wordId]) {
+        App.wordStats[wordId] = {
+            choice: { correct: 0, total: 0 },
+            typing: { correct: 0, total: 0 }
+        };
+    }
+    
+    // type判定: 'TYPING', 'TEST_TYPING', 'TYPING_ORDER' は typing扱い。その他は choice扱い。
+    const category = (type.startsWith('TYPING') || type === 'TEST_TYPING') ? 'typing' : 'choice';
+    
+    App.wordStats[wordId][category].total++;
+    if (isCorrect) {
+        App.wordStats[wordId][category].correct++;
     }
 }
 
@@ -803,6 +841,8 @@ function render() {
         case 'LIST': html = viewList(); break;
         case 'QUIZ': html = viewQuiz(); break;
         case 'RESULT': html = viewResult(); break;
+        case 'STATS': html = viewStats(); break;
+        case 'STATS_DETAIL': html = viewStatsDetail(); break;
         default: html = viewStart();
     }
     
@@ -812,26 +852,37 @@ function render() {
 
 function updateHeader() {
     const backBtn = document.getElementById('header-back-btn');
+    const statsBtn = document.getElementById('stats-btn');
     const progContainer = document.getElementById('progress-container');
     const progText = document.getElementById('progress-text');
     const progBar = document.getElementById('progress-bar');
 
     if (!backBtn) return;
 
-    const newBtn = backBtn.cloneNode(true);
-    if(backBtn.parentNode) backBtn.parentNode.replaceChild(newBtn, backBtn);
-    
-    newBtn.onclick = () => {
-        App.mode = 'START';
-        App.searchTerm = '';
-        render();
+    // Use direct onclick assignment to ensure event handler is updated correctly
+    backBtn.onclick = (e) => {
+        e.preventDefault();
+        if (App.mode === 'STATS_DETAIL') {
+            App.mode = 'STATS';
+            render();
+        } else if (App.mode === 'QUIZ') {
+            window.finishQuiz();
+        } else {
+            App.mode = 'START';
+            App.searchTerm = '';
+            render();
+        }
     };
 
+    // 統計ボタンの表示制御
     if (App.mode === 'START') {
-        newBtn.classList.add('hidden');
+        backBtn.classList.add('hidden');
+        if (statsBtn) statsBtn.classList.remove('hidden');
         if (progContainer) progContainer.classList.add('hidden');
     } else {
-        newBtn.classList.remove('hidden');
+        backBtn.classList.remove('hidden');
+        if (statsBtn) statsBtn.classList.add('hidden');
+
         if (App.mode === 'QUIZ') {
             if (progContainer) progContainer.classList.remove('hidden');
             const total = App.queue.length;
@@ -846,25 +897,20 @@ function updateHeader() {
 
 function postRender() {
     const isTyping = App.quizType.startsWith('TYPING') || App.quizType === 'TEST_TYPING';
-    if (App.mode === 'QUIZ' && isTyping) {
-        const input = document.getElementById('type-input');
-        if (input) {
-            input.focus();
-            input.onkeydown = (e) => {
-                if (e.key === 'Enter' && !e.isComposing) {
-                    e.preventDefault();
-                    checkTyping();
-                }
-            };
+    if (App.mode === 'QUIZ') {
+        if (isTyping) {
+            const input = document.getElementById('type-input');
+            if (input) {
+                input.focus();
+                input.onkeydown = (e) => {
+                    if (e.key === 'Enter' && !e.isComposing) {
+                        e.preventDefault();
+                        checkTyping();
+                    }
+                };
+            }
         }
-    }
-    // リスト画面の検索入力欄フォーカス維持
-    if (App.mode === 'LIST') {
-        const searchInput = document.getElementById('search-input');
-        if(searchInput && document.activeElement !== searchInput && App.searchTerm) {
-             // 簡易的なフォーカス復帰（部分更新により基本的には不要だが念のため）
-             // searchInput.focus(); 
-        }
+        if (document.activeElement) document.activeElement.blur();
     }
 }
 
@@ -875,7 +921,6 @@ function viewStart() {
     const mistakeWords = App.wordList.filter(w => App.savedMistakes.has(w.id));
     const savedCount = mistakeWords.length;
     
-    // 範囲入力欄の生成
     const rangeInputs = App.ranges.map((r, i) => `
         <div class="flex items-center justify-center gap-2 mb-2 animate-fadeIn">
             <input type="number" value="${r.start}" oninput="updateRange(${i}, 'start', this.value)" class="w-24 p-3 border-2 border-purple-300 bg-purple-50 rounded-xl text-center font-black text-xl text-black focus:border-purple-500 focus:bg-white outline-none transition shadow-sm" min="1" max="${total}">
@@ -925,7 +970,7 @@ function viewStart() {
                                 </div>
                                 <div class="flex items-center gap-1">
                                     <button onclick="speak(${w.id})" class="w-8 h-8 rounded-full bg-white text-slate-400 hover:text-indigo-500 flex items-center justify-center transition shadow-sm">🔊</button>
-                                    <button onclick="manualRemoveMistake(${w.id})" class="w-8 h-8 rounded-full bg-white text-slate-400 hover:text-red-500 flex items-center justify-center transition shadow-sm" title="苦手リストから削除">🗑️</button>
+                                    <button onclick="manualRemoveMistake(event, ${w.id})" class="w-8 h-8 rounded-full bg-white text-slate-400 hover:text-red-500 flex items-center justify-center transition shadow-sm relative z-50 cursor-pointer" title="苦手リストから削除">🗑️</button>
                                 </div>
                             </div>
                         `).join('')}
@@ -952,16 +997,34 @@ function viewStart() {
         </div>
 
         <div class="space-y-4">
-            <!-- 1: 単語リスト -->
+            <!-- 単語リスト -->
             <button onclick="startList()" class="w-full p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md hover:border-blue-400 text-left flex items-center gap-4 transition group">
                 <div class="w-12 h-12 bg-blue-50 rounded-full flex items-center justify-center text-2xl group-hover:scale-110 transition">📖</div>
                 <div>
-                    <div class="font-bold text-lg text-slate-800">単語リスト</div>
-                    <div class="text-xs text-slate-500">検索・一覧確認</div>
+                    <div class="font-bold text-lg text-slate-800">単語リスト・成績</div>
+                    <div class="text-xs text-slate-500">一覧と正答率の確認</div>
                 </div>
             </button>
 
-            <!-- 2: 4択クイズ -->
+            <!-- 苦手順（NEW） -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <button onclick="startQuiz('WEAKEST_CHOICE')" class="p-5 bg-purple-50 border border-purple-200 rounded-2xl shadow-sm hover:shadow-md hover:border-purple-400 text-left flex items-center gap-4 transition group">
+                    <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center text-2xl group-hover:scale-110 transition">📉</div>
+                    <div>
+                        <div class="font-bold text-lg text-purple-800">正答率低い順 (4択)</div>
+                        <div class="text-xs text-purple-600">苦手を重点的に特訓</div>
+                    </div>
+                </button>
+                <button onclick="startQuiz('WEAKEST_TYPING')" class="p-5 bg-purple-50 border border-purple-200 rounded-2xl shadow-sm hover:shadow-md hover:border-purple-400 text-left flex items-center gap-4 transition group">
+                    <div class="w-12 h-12 bg-white rounded-full flex items-center justify-center text-2xl group-hover:scale-110 transition">⌨️</div>
+                    <div>
+                        <div class="font-bold text-lg text-purple-800">正答率低い順 (入力)</div>
+                        <div class="text-xs text-purple-600">苦手を重点的に特訓</div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- 4択クイズ -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button onclick="startQuiz('RANDOM')" class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md hover:border-indigo-400 text-left flex items-center gap-4 transition group">
                     <div class="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-2xl group-hover:scale-110 transition">🎲</div>
@@ -979,7 +1042,7 @@ function viewStart() {
                 </button>
             </div>
 
-            <!-- 3: タイピング -->
+            <!-- タイピング -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <button onclick="startQuiz('TYPING')" class="p-5 bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md hover:border-orange-400 text-left flex items-center gap-4 transition group">
                     <div class="w-12 h-12 bg-orange-50 rounded-full flex items-center justify-center text-2xl group-hover:scale-110 transition">⌨️</div>
@@ -997,7 +1060,7 @@ function viewStart() {
                 </button>
             </div>
 
-            <!-- 4: 実力テスト (タイピング) -->
+            <!-- 実力テスト (タイピング) -->
             <div class="w-full p-5 bg-white border border-slate-200 rounded-2xl shadow-sm text-left flex flex-col gap-4 border-l-4 border-l-indigo-500">
                 <div class="flex items-center gap-4">
                     <div class="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center text-2xl">🎓</div>
@@ -1018,28 +1081,115 @@ function viewStart() {
     </div>`;
 }
 
-function viewList() {
+function getFilteredAndSortedList() {
     const list = App.wordList;
     const term = App.searchTerm ? App.searchTerm.toLowerCase() : '';
     
-    const filtered = list.filter(w => {
-        const matches = !term || w.en.toLowerCase().includes(term) || w.ja.includes(term) || w.id.toString().includes(term);
-        return matches;
+    // Filter
+    let filtered = list.filter(w => {
+        return !term || w.en.toLowerCase().includes(term) || w.ja.includes(term) || w.id.toString().includes(term);
     });
 
-    const generateItems = (items) => {
-        if (items.length === 0) return '<div class="text-center text-slate-400 py-20 bg-white rounded-2xl border border-dashed border-slate-300">条件に一致する単語がありません</div>';
-        return items.map(w => `
-            <div class="bg-white p-4 rounded-xl border border-slate-200 flex gap-4 items-start hover:border-indigo-300 transition group content-visibility-auto">
-                <div class="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-1 shadow-inner group-hover:bg-indigo-100 group-hover:text-indigo-600 transition">${w.id}</div>
-                <div class="flex-1">
-                    <div class="font-bold text-xl text-slate-800">${w.en}</div>
-                    <div class="text-slate-600 text-sm leading-relaxed">${w.ja}</div>
-                </div>
-                <button onclick="speak(${w.id})" class="text-slate-400 hover:text-indigo-500 p-2 transition bg-slate-50 rounded-full w-10 h-10 flex items-center justify-center">🔊</button>
-            </div>
-        `).join('');
+    // Helper for sort rate
+    const getSortRate = (id, type) => {
+         const stats = App.wordStats[id] && App.wordStats[id][type];
+         if (!stats || stats.total === 0) return -1;
+         return stats.correct / stats.total;
     };
+
+    // Sort
+    filtered.sort((a, b) => {
+        switch (App.sortType) {
+            case 'ID': return a.id - b.id;
+            case 'EN': return a.en.localeCompare(b.en);
+            case 'CHOICE_ASC': {
+                const rA = getSortRate(a.id, 'choice');
+                const rB = getSortRate(b.id, 'choice');
+                if (rA === -1 && rB === -1) return a.id - b.id;
+                if (rA === -1) return 1;
+                if (rB === -1) return -1;
+                if (rA !== rB) return rA - rB;
+                return a.id - b.id;
+            }
+            case 'CHOICE_DESC': {
+                const rA = getSortRate(a.id, 'choice');
+                const rB = getSortRate(b.id, 'choice');
+                if (rA === -1 && rB === -1) return a.id - b.id;
+                if (rA === -1) return 1;
+                if (rB === -1) return -1;
+                if (rA !== rB) return rB - rA;
+                return a.id - b.id;
+            }
+            case 'TYPING_ASC': {
+                const rA = getSortRate(a.id, 'typing');
+                const rB = getSortRate(b.id, 'typing');
+                if (rA === -1 && rB === -1) return a.id - b.id;
+                if (rA === -1) return 1;
+                if (rB === -1) return -1;
+                if (rA !== rB) return rA - rB;
+                return a.id - b.id;
+            }
+            case 'TYPING_DESC': {
+                const rA = getSortRate(a.id, 'typing');
+                const rB = getSortRate(b.id, 'typing');
+                if (rA === -1 && rB === -1) return a.id - b.id;
+                if (rA === -1) return 1;
+                if (rB === -1) return -1;
+                if (rA !== rB) return rB - rA;
+                return a.id - b.id;
+            }
+            default: return a.id - b.id;
+        }
+    });
+
+    return filtered;
+}
+
+function generateListHTML(items) {
+    if (items.length === 0) return '<div class="text-center text-slate-400 py-20 bg-white rounded-2xl border border-dashed border-slate-300">条件に一致する単語がありません</div>';
+
+    const getRate = (id, type) => {
+        const stats = App.wordStats[id] && App.wordStats[id][type];
+        if (!stats || stats.total === 0) return null;
+        return { rate: Math.round((stats.correct / stats.total) * 100), total: stats.total, correct: stats.correct };
+    };
+
+    return items.map(w => {
+        const choice = getRate(w.id, 'choice');
+        const typing = getRate(w.id, 'typing');
+        
+        return `
+        <div class="bg-white p-4 rounded-xl border border-slate-200 flex gap-4 items-start hover:border-indigo-300 transition group content-visibility-auto">
+            <div class="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-1 shadow-inner group-hover:bg-indigo-100 group-hover:text-indigo-600 transition">${w.id}</div>
+            <div class="flex-1 min-w-0">
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                    <span class="font-bold text-xl text-slate-800 mr-1">${w.en}</span>
+                    ${choice ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${choice.rate >= 80 ? 'bg-green-100 text-green-700' : choice.rate >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}">択: ${choice.rate}% (${choice.correct}/${choice.total})</span>` : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-400">択: -</span>'}
+                    ${typing ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold ${typing.rate >= 80 ? 'bg-green-100 text-green-700' : typing.rate >= 50 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}">打: ${typing.rate}% (${typing.correct}/${typing.total})</span>` : '<span class="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-400">打: -</span>'}
+                </div>
+                <div class="text-slate-600 text-sm leading-relaxed">${w.ja}</div>
+            </div>
+            <button onclick="speak(${w.id})" class="text-slate-400 hover:text-indigo-500 p-2 transition bg-slate-50 rounded-full w-10 h-10 flex items-center justify-center flex-shrink-0">🔊</button>
+        </div>
+        `;
+    }).join('');
+}
+
+function updateListContainer() {
+    const filtered = getFilteredAndSortedList();
+    const container = document.getElementById('list-container');
+    const stats = document.getElementById('list-stats');
+    
+    if (container) {
+        container.innerHTML = generateListHTML(filtered);
+    }
+    if (stats) {
+        stats.innerHTML = `<span>${filtered.length} Hits</span>`;
+    }
+}
+
+function viewList() {
+    const filtered = getFilteredAndSortedList();
 
     return `
     <div class="max-w-2xl mx-auto px-4 pb-10 pt-20">
@@ -1049,14 +1199,148 @@ function viewList() {
                 <span class="absolute left-4 top-4 text-slate-400 text-xl">🔍</span>
                 <button id="search-clear-btn" onclick="onSearch(''); document.getElementById('search-input').value = ''; document.getElementById('search-input').focus();" class="absolute right-4 top-4 text-slate-400 hover:text-slate-600 bg-slate-100 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold ${App.searchTerm ? '' : 'hidden'}">✕</button>
             </div>
-            <div id="list-stats" class="flex justify-between items-center mt-3 px-2 text-xs font-bold text-slate-400 uppercase tracking-wide">
-                <span>${filtered.length} Hits</span>
+            <div class="flex items-center gap-2 mt-3 overflow-x-auto pb-2 scrollbar-thin">
+                <select onchange="onSortChange(this.value)" class="bg-white border border-slate-200 text-slate-700 text-xs font-bold rounded-lg p-2 outline-none focus:border-indigo-500 shadow-sm">
+                    <option value="ID" ${App.sortType === 'ID' ? 'selected' : ''}>ID順</option>
+                    <option value="EN" ${App.sortType === 'EN' ? 'selected' : ''}>アルファベット順</option>
+                    <option value="CHOICE_ASC" ${App.sortType === 'CHOICE_ASC' ? 'selected' : ''}>4択正答率 (低い順)</option>
+                    <option value="CHOICE_DESC" ${App.sortType === 'CHOICE_DESC' ? 'selected' : ''}>4択正答率 (高い順)</option>
+                    <option value="TYPING_ASC" ${App.sortType === 'TYPING_ASC' ? 'selected' : ''}>入力正答率 (低い順)</option>
+                    <option value="TYPING_DESC" ${App.sortType === 'TYPING_DESC' ? 'selected' : ''}>入力正答率 (高い順)</option>
+                </select>
+                <div id="list-stats" class="text-xs font-bold text-slate-400 uppercase tracking-wide ml-auto flex-shrink-0">
+                    <span>${filtered.length} Hits</span>
+                </div>
             </div>
         </div>
         <div id="list-container" class="space-y-4">
-            ${generateItems(filtered)}
+            ${generateListHTML(filtered)}
         </div>
     </div>`;
+}
+
+function viewStats() {
+    // 統計一覧
+    const history = [...App.history].reverse(); // 新しい順
+    
+    const rows = history.map((session, index) => {
+        const rate = Math.round((session.score / session.total) * 100);
+        const date = new Date(session.date).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+        
+        // Add status badge
+        const statusBadge = session.interrupted 
+            ? '<span class="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-orange-100 text-orange-600 ml-2 align-middle">中断</span>' 
+            : '';
+        
+        return `
+        <tr onclick="showSessionDetail(${session.id})" class="cursor-pointer hover:bg-slate-50 transition border-b border-slate-100">
+            <td class="p-3 text-sm text-slate-600">${date}</td>
+            <td class="p-3 text-sm font-bold text-slate-800">
+                ${session.typeLabel}
+                ${statusBadge}
+            </td>
+            <td class="p-3 text-sm text-slate-500">${session.range}</td>
+            <td class="p-3 text-sm font-bold ${rate >= 80 ? 'text-green-600' : rate < 50 ? 'text-red-500' : 'text-indigo-600'}">
+                ${rate}% <span class="text-xs text-slate-400 font-normal">(${session.score}/${session.total})</span>
+            </td>
+            <td class="p-3 text-right">
+                <span class="text-slate-300">›</span>
+            </td>
+        </tr>
+        `;
+    }).join('');
+
+    return `
+    <div class="max-w-3xl mx-auto px-4 py-8 pt-24 fade-in">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-black text-slate-800">📊 学習履歴</h2>
+            <button onclick="downloadHistoryCSV()" class="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-100 transition flex items-center gap-2">
+                <span>📥</span> CSV出力
+            </button>
+        </div>
+        
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="p-3 text-xs font-bold text-slate-400 uppercase">日時</th>
+                            <th class="p-3 text-xs font-bold text-slate-400 uppercase">形式</th>
+                            <th class="p-3 text-xs font-bold text-slate-400 uppercase">範囲</th>
+                            <th class="p-3 text-xs font-bold text-slate-400 uppercase">正答率</th>
+                            <th class="p-3"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${history.length > 0 ? rows : '<tr><td colspan="5" class="p-8 text-center text-slate-400">履歴がありません</td></tr>'}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    `;
+}
+
+function viewStatsDetail() {
+    const session = App.history.find(h => h.id === App.selectedSessionId);
+    if (!session) return viewStats();
+
+    const rows = session.details.map(log => {
+        const word = App.wordList.find(w => w.id === log.wordId) || { en: 'Unknown', ja: 'Unknown' };
+        return `
+        <tr class="border-b border-slate-100 hover:bg-slate-50 transition">
+            <td class="p-3 text-sm text-slate-500 font-mono">${log.wordId}</td>
+            <td class="p-3">
+                <div class="text-sm font-bold text-slate-800">${word.en}</div>
+                <div class="text-xs text-slate-500">${word.ja}</div>
+            </td>
+            <td class="p-3 text-sm font-mono ${log.isCorrect ? 'text-green-600' : 'text-red-500'}">${log.userAnswer || '(無回答)'}</td>
+            <td class="p-3 text-sm font-mono text-slate-600">${log.correctAnswer}</td>
+            <td class="p-3 text-center">
+                <span class="${log.isCorrect ? 'text-green-500' : 'text-red-500'} font-black">${log.isCorrect ? '○' : '×'}</span>
+            </td>
+        </tr>
+        `;
+    }).join('');
+
+    return `
+    <div class="max-w-3xl mx-auto px-4 py-8 pt-24 slide-up">
+        <div class="flex items-center gap-2 mb-4">
+             <button onclick="App.mode='STATS';render()" class="text-slate-400 hover:text-indigo-600">← 戻る</button>
+        </div>
+        <div class="flex justify-between items-center mb-6">
+            <div>
+                <h2 class="text-xl font-black text-slate-800">
+                    ${session.typeLabel} 詳細
+                    ${session.interrupted ? '<span class="inline-block align-middle text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded ml-2">中断</span>' : ''}
+                </h2>
+                <div class="text-sm text-slate-500 mt-1">${new Date(session.date).toLocaleString('ja-JP')}実施</div>
+            </div>
+            <button onclick="downloadDetailCSV(${session.id})" class="px-4 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-bold hover:bg-indigo-100 transition flex items-center gap-2">
+                <span>📥</span> CSV出力
+            </button>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead class="bg-slate-50 border-b border-slate-200">
+                        <tr>
+                            <th class="p-3 text-xs font-bold text-slate-400 uppercase w-12">ID</th>
+                            <th class="p-3 text-xs font-bold text-slate-400 uppercase">単語</th>
+                            <th class="p-3 text-xs font-bold text-slate-400 uppercase">あなたの回答</th>
+                            <th class="p-3 text-xs font-bold text-slate-400 uppercase">正解</th>
+                            <th class="p-3 text-xs font-bold text-slate-400 uppercase w-12 text-center">判定</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    `;
 }
 
 function viewQuiz() {
@@ -1064,12 +1348,14 @@ function viewQuiz() {
     if (!word) return '<div class="text-center p-8 mt-20 text-red-500 font-bold">エラー: 出題データがありません</div>';
 
     const isReview = App.quizType === 'REVIEW';
-    const isTyping = App.quizType.startsWith('TYPING') || App.quizType === 'TEST_TYPING'; 
+    const isTyping = App.quizType.startsWith('TYPING') || App.quizType === 'TEST_TYPING' || App.quizType === 'WEAKEST_TYPING'; 
     const isTest = App.quizType === 'TEST_TYPING';
+    const isWeakest = App.quizType.startsWith('WEAKEST');
 
-    const modeBadge = isReview 
-        ? `<div class="inline-block px-3 py-1 bg-red-100 text-red-600 rounded-full text-xs font-bold mb-4">🔥 苦手克服モード</div>` 
-        : isTest ? `<div class="inline-block px-3 py-1 bg-indigo-100 text-indigo-600 rounded-full text-xs font-bold mb-4">🎓 実力テスト中</div>` : '';
+    let modeLabel = '';
+    if (isReview) modeLabel = '<div class="inline-block px-3 py-1 bg-red-100 text-red-600 rounded-full text-xs font-bold mb-4">🔥 苦手克服モード</div>';
+    else if (isTest) modeLabel = '<div class="inline-block px-3 py-1 bg-indigo-100 text-indigo-600 rounded-full text-xs font-bold mb-4">🎓 実力テスト中</div>';
+    else if (isWeakest) modeLabel = '<div class="inline-block px-3 py-1 bg-purple-100 text-purple-600 rounded-full text-xs font-bold mb-4">📉 苦手順トレーニング</div>';
 
     let interaction = '';
     if (isTyping) {
@@ -1098,9 +1384,9 @@ function viewQuiz() {
 
         interaction = `<div class="w-full grid gap-3">
             ${choices.map((c, i) => `
-                <button onclick="checkAnswer(${c.id === word.id}, ${word.id})" class="relative p-5 bg-white border-2 border-slate-100 rounded-2xl text-left hover:bg-indigo-50 hover:border-indigo-200 transition-all flex gap-4 items-center group shadow-sm hover:shadow-md active:scale-[0.98]">
-                    <span class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-bold group-hover:bg-indigo-200 group-hover:text-indigo-700 transition-colors">${i+1}</span>
-                    <span class="font-bold text-slate-700 text-base sm:text-lg group-hover:text-indigo-900">${c.ja}</span>
+                <button onclick="checkAnswer(this, ${c.id === word.id}, ${word.id}, '${c.en.replace(/'/g, "\\'")}')" class="relative p-5 bg-white border-2 border-slate-100 rounded-2xl text-left md:hover:bg-slate-50 md:hover:border-slate-300 transition-all flex gap-4 items-center group shadow-sm hover:shadow-md active:scale-[0.98]">
+                    <span class="w-8 h-8 rounded-lg bg-slate-100 text-slate-500 flex items-center justify-center text-sm font-bold group-hover:bg-slate-200 group-hover:text-slate-700 transition-colors">${i+1}</span>
+                    <span class="font-bold text-slate-700 text-base sm:text-lg group-hover:text-slate-900">${c.ja}</span>
                 </button>
             `).join('')}
         </div>`;
@@ -1108,7 +1394,7 @@ function viewQuiz() {
 
     return `
     <div class="max-w-xl mx-auto px-4 py-8 flex flex-col items-center justify-center min-h-screen -mt-10 slide-up">
-        ${modeBadge}
+        ${modeLabel}
         ${!isTyping ? `
         <div class="w-full bg-white p-10 rounded-[2rem] shadow-xl border border-slate-100 text-center mb-8 relative overflow-hidden">
             <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-indigo-400 to-purple-400"></div>
@@ -1119,6 +1405,9 @@ function viewQuiz() {
             </button>
         </div>` : ''}
         ${interaction}
+        <div class="mt-8 text-center relative z-20">
+            <button type="button" onclick="window.finishQuiz()" class="text-slate-400 text-xs font-bold hover:text-red-500 text-red-400 underline decoration-dotted underline-offset-4 transition cursor-pointer p-2 active:scale-95 active:text-red-600">中断して結果を見る</button>
+        </div>
     </div>`;
 }
 
@@ -1127,6 +1416,9 @@ function viewResult() {
     const isReview = App.quizType === 'REVIEW';
     const isTest = App.quizType === 'TEST_TYPING';
     
+    // 結果画面表示時に履歴に保存
+    saveSessionHistory();
+
     return `
     <div class="max-w-xl mx-auto px-4 py-12 text-center space-y-8 fade-in pt-24">
         <div class="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-100 relative overflow-hidden">
@@ -1162,7 +1454,354 @@ function viewResult() {
     </div>`;
 }
 
-// --- アクション ---
+// --- ロジック ---
+
+window.finishQuiz = () => {
+    // タイマーがあればクリアして、遷移待機状態を解除
+    if (App.timerId) clearTimeout(App.timerId);
+    App.isWaiting = false;
+
+    // 現在の進行状況までで終了とする。
+    // 回答済みの数(currentSessionLogs.length)でキューをカットすることで、
+    // まだ回答していない（またはフィードバック待ちでカウントされていない）分を除外する。
+    const answeredCount = App.currentSessionLogs.length;
+    App.queue = App.queue.slice(0, answeredCount);
+    
+    App.wasInterrupted = true; // 中断フラグ
+    App.mode = 'RESULT';
+    render();
+};
+
+window.finishQuizConfirmation = window.finishQuiz; // 後方互換性のためエイリアス（確認なしで即実行）
+
+window.startQuiz = (type) => {
+    const list = App.wordList;
+    let targets = [];
+
+    // 範囲フィルタリング
+    targets = list.filter(w => {
+        return App.ranges.some(r => w.id >= r.start && w.id <= r.end);
+    });
+    
+    if (!targets.length) {
+        alert('指定された範囲に単語がありません。\n範囲を変更してください。');
+        return;
+    }
+
+    let q = [...targets];
+    
+    // ソート・抽出ロジック
+    if (type.startsWith('WEAKEST')) {
+        // 正答率の低い順 (未回答は0%扱いとして、正答率0%と同じく先頭に配置)
+        // さらに、回数が少ないものを優先する等の調整も可能だが、シンプルに率で昇順
+        const checkType = type.includes('TYPING') ? 'typing' : 'choice';
+        q.sort((a, b) => {
+            const rateA = getWordAccuracy(a.id, checkType);
+            const rateB = getWordAccuracy(b.id, checkType);
+            
+            // 率が同じならID順
+            if (rateA !== rateB) return rateA - rateB;
+            return a.id - b.id;
+        });
+        
+        // 最大100問などに制限しても良いが、一旦全範囲
+    } else if (type === 'RANDOM' || type === 'TYPING') {
+        q.sort(() => Math.random() - 0.5);
+    } else if (type === 'ORDER' || type === 'TYPING_ORDER') {
+        q.sort((a,b) => a.id - b.id);
+    }
+
+    App.queue = q;
+    App.currentIndex = 0;
+    App.score = 0;
+    App.mistakes = [];
+    App.currentSessionLogs = []; // ログリセット
+    App.wasInterrupted = false;
+    App.quizType = type;
+    App.mode = 'QUIZ';
+    App.isWaiting = false;
+    App.timerId = null;
+    render();
+};
+
+function getWordAccuracy(id, type) {
+    const stats = App.wordStats[id] && App.wordStats[id][type];
+    if (!stats || stats.total === 0) return 0; // 未回答は0%
+    return stats.correct / stats.total;
+}
+
+window.startTest = () => {
+    const countInput = document.getElementById('test-count');
+    const count = parseInt(countInput ? countInput.value : 10) || 10;
+    
+    const list = App.wordList;
+    const targets = list.filter(w => {
+        return App.ranges.some(r => w.id >= r.start && w.id <= r.end);
+    });
+    
+    if (targets.length < count) {
+        alert(`指定範囲の単語数(${targets.length}語)が、出題数(${count}問)より少ないです。\n出題数を減らすか、範囲を広げてください。`);
+        return;
+    }
+
+    const shuffled = targets.sort(() => Math.random() - 0.5);
+    const selected = shuffled.slice(0, count);
+
+    App.queue = selected;
+    App.currentIndex = 0;
+    App.score = 0;
+    App.mistakes = [];
+    App.currentSessionLogs = []; // ログリセット
+    App.wasInterrupted = false;
+    App.quizType = 'TEST_TYPING';
+    App.mode = 'QUIZ';
+    App.isWaiting = false;
+    App.timerId = null;
+    render();
+};
+
+window.startReview = () => {
+    if(App.savedMistakes.size === 0) return;
+    
+    const list = App.wordList;
+    const targets = list.filter(w => App.savedMistakes.has(w.id));
+    
+    App.queue = targets;
+    App.currentIndex = 0;
+    App.score = 0;
+    App.mistakes = [];
+    App.currentSessionLogs = [];
+    App.wasInterrupted = false;
+    App.quizType = 'REVIEW';
+    App.mode = 'QUIZ';
+    App.isWaiting = false;
+    App.timerId = null;
+    render();
+};
+
+// 4択用回答チェック
+// userSelectEn: ユーザーが選んだ選択肢の英単語（ログ用）
+window.checkAnswer = (el, isCorrect, id, userSelectEn) => {
+    if (App.isWaiting) return;
+    App.isWaiting = true;
+    
+    const word = App.wordList.find(w => w.id === id);
+    
+    if (el && el instanceof HTMLElement) {
+        el.classList.remove('bg-white', 'border-slate-100', 'md:hover:bg-slate-50', 'md:hover:border-slate-300');
+        el.classList.add('bg-indigo-100', 'border-indigo-500');
+    }
+
+    // ログ記録
+    App.currentSessionLogs.push({
+        wordId: word.id,
+        userAnswer: userSelectEn || '(Choice)',
+        correctAnswer: word.en,
+        isCorrect: isCorrect
+    });
+    
+    // 統計更新
+    updateWordStats(word.id, isCorrect, App.quizType);
+
+    if (isCorrect) {
+        App.score++;
+        if (App.quizType === 'REVIEW') {
+            App.savedMistakes.delete(id);
+        }
+    } else {
+        if (word) {
+            App.mistakes.push(word);
+            App.savedMistakes.add(id);
+        }
+    }
+    
+    // 即時保存（中断対策）
+    saveData();
+
+    showFeedback(isCorrect, word);
+
+    if (App.timerId) clearTimeout(App.timerId);
+    App.timerId = setTimeout(() => {
+        hideFeedback();
+        App.isWaiting = false;
+        nextStep();
+    }, 1200);
+};
+
+window.checkTyping = () => {
+    if (App.isWaiting) return;
+    const input = document.getElementById('type-input');
+    if(!input) return;
+    
+    const val = input.value.trim(); // 大文字小文字は保持してログに残す、判定は小文字
+    const word = App.queue[App.currentIndex];
+    
+    if (!val) return;
+    
+    const isCorrect = val.toLowerCase() === word.en.toLowerCase();
+
+    // ログ記録
+    App.currentSessionLogs.push({
+        wordId: word.id,
+        userAnswer: val,
+        correctAnswer: word.en,
+        isCorrect: isCorrect
+    });
+    
+    // 統計更新
+    updateWordStats(word.id, isCorrect, App.quizType);
+    saveData();
+
+    if (App.quizType === 'TEST_TYPING') {
+        if (isCorrect) {
+            App.score++;
+        } else {
+            App.mistakes.push(word);
+            App.savedMistakes.add(word.id);
+        }
+        
+        input.value = '';
+        if (App.currentIndex < App.queue.length - 1) {
+            App.currentIndex++;
+            render();
+        } else {
+            App.mode = 'RESULT';
+            render();
+        }
+    } else {
+        if (isCorrect) App.score++;
+        else {
+             App.mistakes.push(word);
+             App.savedMistakes.add(word.id);
+        }
+        
+        showFeedback(isCorrect, word);
+
+        if (App.timerId) clearTimeout(App.timerId);
+        App.timerId = setTimeout(() => {
+            hideFeedback();
+            App.isWaiting = false;
+            nextStep();
+        }, 1200);
+    }
+};
+
+function saveSessionHistory() {
+    // 結果画面表示時に履歴配列へプッシュ
+    // 同じセッションが重複しないように簡易的なチェックを入れるか、
+    // あるいは `App.mode` 切り替え時の一回のみ実行するように制御
+    
+    // ここでは単純に保存。呼び出し元が viewResult なので、再描画のたびに保存されないよう注意が必要だが
+    // viewResult は基本的に一回呼ばれて終わり or ホームへ戻るなので、
+    // 重複を防ぐために currentSessionLogs が空なら何もしないというガードを入れる
+    if (App.currentSessionLogs.length === 0) return;
+
+    const rangeStr = App.ranges.map(r => `${r.start}-${r.end}`).join(',');
+    
+    let label = '';
+    switch(App.quizType) {
+        case 'RANDOM': label = '4択(ランダム)'; break;
+        case 'ORDER': label = '4択(番号順)'; break;
+        case 'TYPING': label = 'タイピング(ランダム)'; break;
+        case 'TYPING_ORDER': label = 'タイピング(番号順)'; break;
+        case 'TEST_TYPING': label = '実力テスト'; break;
+        case 'REVIEW': label = '苦手復習'; break;
+        case 'WEAKEST_CHOICE': label = '苦手順(4択)'; break;
+        case 'WEAKEST_TYPING': label = '苦手順(タイピング)'; break;
+        default: label = App.quizType;
+    }
+
+    const session = {
+        id: Date.now(),
+        date: new Date().toISOString(),
+        type: App.quizType,
+        typeLabel: label,
+        range: rangeStr,
+        score: App.score,
+        total: App.queue.length,
+        details: [...App.currentSessionLogs], // コピーを保存
+        interrupted: !!App.wasInterrupted // 中断フラグ保存
+    };
+    
+    App.history.push(session);
+    App.currentSessionLogs = []; // ログをクリアして重複保存防止
+    saveData();
+}
+
+// --- CSVダウンロード機能 ---
+window.startStats = () => {
+    App.mode = 'STATS';
+    render();
+};
+
+window.showSessionDetail = (id) => {
+    App.selectedSessionId = id;
+    App.mode = 'STATS_DETAIL';
+    render();
+};
+
+function downloadCSV(csvContent, filename) {
+    // BOM付与でExcelでの文字化け防止
+    const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), csvContent], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+window.downloadHistoryCSV = () => {
+    if (App.history.length === 0) {
+        alert("履歴がありません");
+        return;
+    }
+    
+    // ヘッダー
+    let csv = "日時,出題形式,範囲,正答数,問題数,正答率,中断\n";
+    
+    App.history.forEach(h => {
+        const date = new Date(h.date).toLocaleString('ja-JP');
+        const rate = Math.round((h.score / h.total) * 100) + "%";
+        // CSVエスケープ処理（簡易）
+        const row = [
+            `"${date}"`,
+            `"${h.typeLabel}"`,
+            `"${h.range}"`,
+            h.score,
+            h.total,
+            `"${rate}"`,
+            h.interrupted ? "はい" : "いいえ"
+        ].join(",");
+        csv += row + "\n";
+    });
+    
+    downloadCSV(csv, `leap_history_${new Date().toISOString().slice(0,10)}.csv`);
+};
+
+window.downloadDetailCSV = (sessionId) => {
+    const session = App.history.find(h => h.id === sessionId);
+    if (!session) return;
+    
+    let csv = "ID,単語,ユーザー回答,正解,判定\n";
+    
+    session.details.forEach(log => {
+        const word = App.wordList.find(w => w.id === log.wordId) || { en: 'Unknown' };
+        const row = [
+            log.wordId,
+            `"${word.en}"`,
+            `"${log.userAnswer.replace(/"/g, '""')}"`,
+            `"${log.correctAnswer.replace(/"/g, '""')}"`,
+            log.isCorrect ? "正解" : "不正解"
+        ].join(",");
+        csv += row + "\n";
+    });
+    
+    downloadCSV(csv, `leap_detail_${sessionId}.csv`);
+};
+
 
 window.addRange = () => {
     App.ranges.push({start: 1, end: 100});
@@ -1186,43 +1825,17 @@ window.setRange = (s, e) => {
 
 window.onSearch = (val) => {
     App.searchTerm = val;
-    const term = val.toLowerCase();
-    const list = App.wordList;
-    
-    const filtered = list.filter(w => {
-        const matches = !term || w.en.toLowerCase().includes(term) || w.ja.includes(term) || w.id.toString().includes(term);
-        return matches;
-    });
-
-    const container = document.getElementById('list-container');
-    const stats = document.getElementById('list-stats');
+    updateListContainer();
     const clearBtn = document.getElementById('search-clear-btn');
-
-    if (container) {
-        if (filtered.length === 0) {
-            container.innerHTML = '<div class="text-center text-slate-400 py-20 bg-white rounded-2xl border border-dashed border-slate-300">条件に一致する単語がありません</div>';
-        } else {
-            container.innerHTML = filtered.map(w => `
-                <div class="bg-white p-4 rounded-xl border border-slate-200 flex gap-4 items-start hover:border-indigo-300 transition group content-visibility-auto">
-                    <div class="w-10 h-10 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center font-bold text-sm flex-shrink-0 mt-1 shadow-inner group-hover:bg-indigo-100 group-hover:text-indigo-600 transition">${w.id}</div>
-                    <div class="flex-1">
-                        <div class="font-bold text-xl text-slate-800">${w.en}</div>
-                        <div class="text-slate-600 text-sm leading-relaxed">${w.ja}</div>
-                    </div>
-                    <button onclick="speak(${w.id})" class="text-slate-400 hover:text-indigo-500 p-2 transition bg-slate-50 rounded-full w-10 h-10 flex items-center justify-center">🔊</button>
-                </div>
-            `).join('');
-        }
-    }
-
-    if (stats) {
-        stats.innerHTML = `<span>${filtered.length} Hits</span>`;
-    }
-
     if (clearBtn) {
         if (val) clearBtn.classList.remove('hidden');
         else clearBtn.classList.add('hidden');
     }
+};
+
+window.onSortChange = (val) => {
+    App.sortType = val;
+    updateListContainer();
 };
 
 window.toggleMistakeList = () => {
@@ -1230,10 +1843,10 @@ window.toggleMistakeList = () => {
     render();
 };
 
-window.manualRemoveMistake = (id) => {
-    if(!confirm('この単語を苦手リストから削除しますか？')) return;
+window.manualRemoveMistake = (e, id) => {
+    if(e) e.stopPropagation();
     App.savedMistakes.delete(id);
-    saveMistakesToStorage();
+    saveData();
     render();
 };
 
@@ -1242,154 +1855,21 @@ window.startList = () => {
     render();
 };
 
-window.startQuiz = (type) => {
-    const list = App.wordList;
-    const targets = list.filter(w => {
-        return App.ranges.some(r => w.id >= r.start && w.id <= r.end);
-    });
-    
-    if (!targets.length) {
-        alert('指定された範囲に単語がありません。\n範囲を変更してください。');
-        return;
-    }
-
-    let q = [...targets];
-    if (type === 'RANDOM') q.sort(() => Math.random() - 0.5);
-    else if (type === 'ORDER') q.sort((a,b) => a.id - b.id);
-    else if (type === 'TYPING') q.sort(() => Math.random() - 0.5);
-    else if (type === 'TYPING_ORDER') q.sort((a,b) => a.id - b.id);
-
-    App.queue = q;
-    App.currentIndex = 0;
-    App.score = 0;
-    App.mistakes = [];
-    App.quizType = type;
-    App.mode = 'QUIZ';
-    App.isWaiting = false;
-    render();
-};
-
-window.startTest = () => {
-    const countInput = document.getElementById('test-count');
-    const count = parseInt(countInput ? countInput.value : 10) || 10;
-    
-    const list = App.wordList;
-    const targets = list.filter(w => {
-        return App.ranges.some(r => w.id >= r.start && w.id <= r.end);
-    });
-    
-    if (targets.length < count) {
-        alert(`指定範囲の単語数(${targets.length}語)が、出題数(${count}問)より少ないです。\n出題数を減らすか、範囲を広げてください。`);
-        return;
-    }
-
-    // シャッフルして指定個数を抽出
-    const shuffled = targets.sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, count);
-
-    App.queue = selected;
-    App.currentIndex = 0;
-    App.score = 0;
-    App.mistakes = [];
-    App.quizType = 'TEST_TYPING';
-    App.mode = 'QUIZ';
-    App.isWaiting = false;
-    render();
-};
-
-window.startReview = () => {
-    if(App.savedMistakes.size === 0) return;
-    
-    const list = App.wordList;
-    const targets = list.filter(w => App.savedMistakes.has(w.id));
-    
-    App.queue = targets; // 復習はID順が見やすいが、ランダムでもOK。一旦ID順
-    App.currentIndex = 0;
-    App.score = 0;
-    App.mistakes = [];
-    App.quizType = 'REVIEW';
-    App.mode = 'QUIZ';
-    App.isWaiting = false;
-    render();
-};
-
-window.checkAnswer = (isCorrect, id) => {
-    if (App.isWaiting) return;
-    App.isWaiting = true;
-    
-    const word = App.wordList.find(w => w.id === id);
-    
-    if (isCorrect) {
-        App.score++;
-        // 復習モードで正解ならリストから削除（克服）
-        if (App.quizType === 'REVIEW') {
-            App.savedMistakes.delete(id);
-            saveMistakesToStorage();
-        }
-    } else {
-        if (word) {
-            App.mistakes.push(word);
-            // 間違えたら自動保存
-            App.savedMistakes.add(id);
-            saveMistakesToStorage();
-        }
-    }
-
-    showFeedback(isCorrect, word);
-
-    setTimeout(() => {
-        hideFeedback();
-        App.isWaiting = false;
-        nextStep();
-    }, 1200);
-};
-
-window.checkTyping = () => {
-    if (App.isWaiting) return;
-    const input = document.getElementById('type-input');
-    if(!input) return;
-    
-    const val = input.value.trim().toLowerCase();
-    const word = App.queue[App.currentIndex];
-    
-    if (!val) return;
-    
-    const isCorrect = val === word.en.toLowerCase();
-
-    if (App.quizType === 'TEST_TYPING') {
-        // テストモード：即時判定・フィードバックなし
-        if (isCorrect) {
-            App.score++;
-        } else {
-            App.mistakes.push(word);
-            App.savedMistakes.add(word.id);
-            saveMistakesToStorage();
-        }
-        
-        // 次の問題へ即座に移動
-        input.value = '';
-        if (App.currentIndex < App.queue.length - 1) {
-            App.currentIndex++;
-            render();
-        } else {
-            App.mode = 'RESULT';
-            render();
-        }
-    } else {
-        // 通常モード
-        window.checkAnswer(isCorrect, word.id);
-    }
-};
-
 window.retry = () => {
-    if (App.quizType === 'RANDOM' || App.quizType === 'TYPING') {
+    const type = App.quizType;
+    if (type === 'RANDOM' || type === 'TYPING') {
         App.queue.sort(() => Math.random() - 0.5);
-    } else if (App.quizType === 'ORDER' || App.quizType === 'TYPING_ORDER') {
+    } else if (type === 'ORDER' || type === 'TYPING_ORDER') {
         App.queue.sort((a,b) => a.id - b.id);
     }
+    // WEAKEST系は再度計算しないと順番が変わらないため、そのままリトライしてもOKだが
+    // 習熟度が変わっているため、本来は再計算したほうがよい。ここでは単純なリトライ（同じセット）とする。
+    
     App.currentIndex = 0;
     App.score = 0;
     App.mistakes = [];
+    App.currentSessionLogs = [];
+    App.wasInterrupted = false;
     App.mode = 'QUIZ';
     render();
 };
@@ -1425,7 +1905,6 @@ function showFeedback(isCorrect, word) {
     if (isCorrect) {
         content.className = "p-8 rounded-[2rem] bg-green-50 border-4 border-green-400 text-center max-w-sm mx-4 shadow-2xl scale-110 pop-in";
         
-        // 復習モードでの正解なら特別なメッセージ
         const isMastered = App.quizType === 'REVIEW';
         title.innerHTML = isMastered ? "🎉 MASTERED!" : "Correct!";
         title.className = "text-5xl font-black text-green-500 mb-2 tracking-tighter";
@@ -1463,4 +1942,3 @@ if (document.readyState === 'loading') {
 <script type="module" src="/index.tsx"></script>
 </body>
 </html>
-    
